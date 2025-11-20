@@ -32,43 +32,11 @@ make freeze
 The start/run commands are formatted as "make start/run" followed by the service desired i.e. "bank":
 
 ````bash
-make run bank
+make run 
 ````
 
 ````bash
-make start bank:
-````
-
-````bash
-make run login
-````
-
-````bash
-make start login
-````
-
-````bash
-make run notification
-````
-
-````bash
-make start notification
-````
-
-````bash
-make run order
-````
-
-````bash
-make start order
-````
-
-````bash
-make run profile
-````
-
-````bash
-make start profile
+make start
 ````
 
 ````bash
