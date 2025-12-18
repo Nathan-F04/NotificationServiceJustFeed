@@ -38,4 +38,4 @@ jobs:
 
     - name: Run tests with coverage and enforce threshold
       run: |
-        pytest --cov=Src --cov-fail-under=80 --cov-report=term-missing
+        pytest --cov=notification_service --cov-fail-under=80 --cov-report=term-missing
