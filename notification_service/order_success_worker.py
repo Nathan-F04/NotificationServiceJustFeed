@@ -26,12 +26,19 @@ async def websocket_endpoint(ws: WebSocket):
 
 async def send_notification(message: str):
     payload = {"type": "notification", "message": message}
+    disconnected_clients = set()
+
     for ws in clients:
         try:
             await ws.send_json(payload)
-        except:
-            clients.remove(ws)
+        except WebSocketDisconnect:
+            disconnected_clients.add(ws)
+        except Exception as e:
+            print(f"Failed to send notification to a client: {e}")
+            disconnected_clients.add(ws)
 
+    # Remove all disconnected clients safely
+    clients.difference_update(disconnected_clients)
 
 async def rabbit_mq_listener():
     """
