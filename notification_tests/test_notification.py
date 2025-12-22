@@ -1,49 +1,44 @@
 """Test File for Notification Service"""
-import pytest
-import asyncio
-from notification_service.order_success_worker import send_notification, clients, rabbit_mq_listener
-import json
 from unittest.mock import AsyncMock, patch
+import asyncio
+import json
+import pytest
+from notification_service.order_success_worker import send_notification, clients, rabbit_mq_listener
 
-@pytest.mark.asyncio
 def test_websocket_connection(client):
-    # Ensure clients set is empty at the start
-    clients.clear()
+    """Test websocket"""
 
     with client.websocket_connect("/ws") as websocket:
-        # Send a message to keep the loop alive (like frontend ping)
+        # Send a message to keep the loop alive
         websocket.send_text("ping")
-
-        # Check that the WebSocket was added to clients
         assert len(clients) == 1
-
-        # Close the WebSocket
         websocket.close()
 
     # After disconnect, client should be removed
     assert len(clients) == 0
 
-# -----------------------------
-# Fake WebSocket for testing
-# -----------------------------
+class WebSocketSendError(RuntimeError):
+    """Simulate an error"""
+
 class FakeWebSocket:
+    """Class to create websockets, set if they failed, or append to sent list"""
     def __init__(self, fail=False):
         self.sent = []
-        self.fail = fail  # simulate a failure
+        self.fail = fail
+
+    #Used to simulate the read send_json for testing
     async def send_json(self, data):
+        """Checks for fail and apends data if success"""
         if self.fail:
-            raise Exception("WebSocket failed")  # simulate disconnected client
+            raise WebSocketSendError("WebSocket failed")
         self.sent.append(data)
 
-# -----------------------------
-# Test sending notification to all clients
-# -----------------------------
 @pytest.mark.asyncio
 async def test_send_notification_sends_to_all_clients():
+    """Send a notification for multiple clients to receive"""
     ws1 = FakeWebSocket()
     ws2 = FakeWebSocket()
 
-    clients.clear()
     clients.add(ws1)
     clients.add(ws2)
 
@@ -53,29 +48,22 @@ async def test_send_notification_sends_to_all_clients():
     assert ws1.sent == expected_payload
     assert ws2.sent == expected_payload
 
-# -----------------------------
-# Test that failed WebSocket is removed from clients
-# -----------------------------
 @pytest.mark.asyncio
 async def test_send_notification_removes_failed_client():
+    """Send notification with one failure"""
     ws1 = FakeWebSocket()
-    ws2 = FakeWebSocket(fail=True)  # this one will raise an exception
+    ws2 = FakeWebSocket(fail=True)
 
-    clients.clear()
     clients.add(ws1)
     clients.add(ws2)
 
-    await send_notification("Test")
+    await send_notification("Success")
 
-    # ws1 should still have received the message
-    assert ws1.sent == [{"type": "notification", "message": "Test"}]
-    # ws2 failed and should be removed from clients
+    assert ws1.sent == [{"type": "notification", "message": "Success"}]
     assert ws2 not in clients
 
-# -----------------------------
-# Fake async iterator for queue
-# -----------------------------
 class FakeQueueIterator:
+    """Simulates queue.iterator()"""
     def __init__(self, messages):
         self._messages = messages
 
@@ -91,89 +79,83 @@ class FakeQueueIterator:
                 yield msg
         return gen()
 
-# -----------------------------
-# Fake async context manager for msg.process()
-# -----------------------------
 class FakeProcessCM:
+    """Fake async context manager for msg.process()"""
     async def __aenter__(self):
         return None
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         return False
 
-# -----------------------------
-# Fake message
-# -----------------------------
 class FakeMessage:
+    """Fake message"""
     def __init__(self, body, routing_key):
         self.body = body
         self.routing_key = routing_key
 
     def process(self):
+        """Fake proccess"""
         return FakeProcessCM()
 
-# -----------------------------
-# Fake queue
-# -----------------------------
+
 class FakeQueue:
+    """Fake queue"""
     def __init__(self, messages):
         self._messages = messages
 
     async def bind(self, *args, **kwargs):
-        return None  # ✅ must be async because listener does `await queue.bind(...)`
+        """Bind"""
+        return None
 
     def iterator(self):
+        """Iterator"""
         return FakeQueueIterator(self._messages)
 
-# -----------------------------
-# Fake channel
-# -----------------------------
 class FakeChannel:
+    """Fake channel"""
     def __init__(self, messages):
         self._messages = messages
 
     async def declare_exchange(self, *args, **kwargs):
-        return self  # exchange object isn’t used in test
+        """Exchange object isn't used in test"""
+        return self
 
     async def declare_queue(self, *args, **kwargs):
+        """Declare queue"""
         return FakeQueue(self._messages)
 
-# -----------------------------
-# Fake connection
-# -----------------------------
 class FakeConnection:
+    """Fake connection"""
     def __init__(self, messages):
         self._messages = messages
         self._channel = FakeChannel(messages)
 
     async def channel(self):
+        """Channel"""
         return self._channel
 
-# -----------------------------
-# The test
-# -----------------------------
 @pytest.mark.asyncio
-async def test_rabbit_listener_calls_send_notification():
-    # --- Setup fake message ---
-    fake_msg = FakeMessage(body=json.dumps({"order_id": 123}).encode(), routing_key="order.success")
+async def test_rabbit_listener():
+    """Set up fake message"""
+    fake_msg = FakeMessage(body=json.dumps("Success").encode(), routing_key="order.success")
 
-    # --- Async function to patch connect_robust ---
     async def fake_connect(*args, **kwargs):
+        """Async function to patch connect_robust"""
         return FakeConnection([fake_msg])
 
-    # --- Patch connect_robust and send_notification ---
+    #Replace objects here
     with patch("notification_service.order_success_worker.aio_pika.connect_robust", new=fake_connect), \
          patch("notification_service.order_success_worker.send_notification", new_callable=AsyncMock) as mock_send:
 
         # Run listener as a task
         task = asyncio.create_task(rabbit_mq_listener())
-        await asyncio.sleep(0.1)  # allow listener to pick up message
+        # Allow listener to pick up message
+        await asyncio.sleep(0.1)  
         task.cancel()
+        #Cancel the task, let the error be caught after the await
         try:
             await task
         except asyncio.CancelledError:
             pass
 
-        # Assert send_notification was called correctly
-        mock_send.assert_called_once_with({"order_id": 123})
-
+        mock_send.assert_called_once_with("Success")

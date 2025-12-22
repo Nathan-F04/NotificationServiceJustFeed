@@ -1,21 +1,33 @@
 """
 Docstring for notification_service.order_success_worker
 """
-# notification_service/main.py
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from contextlib import asynccontextmanager
 import asyncio
 import json
 import os
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 import aio_pika
 
 RABBIT_URL = os.getenv("RABBIT_URL")
 EXCHANGE_NAME = "just_feed_exchange"
 
-app = FastAPI()
 clients = set()
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Starts rabbit mq task"""
+    task = asyncio.create_task(rabbit_mq_listener())
+    try:
+        yield
+    finally:
+        task.cancel()
+
+app = FastAPI(lifespan=lifespan)
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
+    """Open websocket and keep alive"""
     await ws.accept()
     clients.add(ws)
     try:
@@ -25,6 +37,7 @@ async def websocket_endpoint(ws: WebSocket):
         clients.remove(ws)
 
 async def send_notification(message: str):
+    """Send payload through open socket"""
     payload = {"type": "notification", "message": message}
     disconnected_clients = set()
 
@@ -42,7 +55,7 @@ async def send_notification(message: str):
 
 async def rabbit_mq_listener():
     """
-    Docstring for main
+    Setup queue, exchange, set binding etc, then wait for messages
     """
     conn = await aio_pika.connect_robust(RABBIT_URL)
     ch = await conn.channel()
@@ -64,7 +77,3 @@ async def rabbit_mq_listener():
                 data = json.loads(msg.body)
                 print("Order Event:", msg.routing_key, data)
                 await send_notification(data)
-
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(rabbit_mq_listener())
