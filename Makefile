@@ -10,12 +10,12 @@ freeze:
 	pip freeze > requirements.txt
 
 run:
-	python -m uvicorn $(NOTIF_APP) --host 0.0.0.0 --port 8002 --reload
+	python -m uvicorn $(NOTIF_APP) --host localhost --port 8080 --reload
 
 start:
-	nohup python -m uvicorn $(NOTIF_APP) --host 0.0.0.0 --port 8002 --reload \
+	nohup python -m uvicorn $(NOTIF_APP) --host localhost --port 8080 --reload \
 	> .uvicorn.out 2>&1 & echo $$! > $(PID_FILE)
-	@echo "Notification service started (PID=$$(cat $(PID_FILE))) on http://localhost:8002"
+	@echo "Notification service started (PID=$$(cat $(PID_FILE))) on http://localhost:8080"
 
 stop:
 	@if [ -f $(PID_FILE) ]; then \
