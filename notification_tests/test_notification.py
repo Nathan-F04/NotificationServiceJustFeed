@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 import asyncio
 import json
 import pytest
-from notification_service.order_success_worker import send_notification, clients, rabbit_mq_listener
+from notification_service.notification import send_notification, clients, rabbit_mq_listener
 
 def test_websocket_connection(client):
     """Test websocket"""
@@ -113,22 +113,23 @@ class FakeQueue:
 
 class FakeChannel:
     """Fake channel"""
-    def __init__(self, messages):
-        self._messages = messages
+    def __init__(self, messages_by_queue):
+        self._messages_by_queue = messages_by_queue
 
     async def declare_exchange(self, *args, **kwargs):
         """Exchange object isn't used in test"""
         return self
 
-    async def declare_queue(self, *args, **kwargs):
-        """Declare queue"""
-        return FakeQueue(self._messages)
+    async def declare_queue(self, queue_name, *args, **kwargs):
+        """Declare queue - return messages specific to this queue"""
+        messages = self._messages_by_queue.get(queue_name, [])
+        return FakeQueue(messages)
 
 class FakeConnection:
     """Fake connection"""
-    def __init__(self, messages):
-        self._messages = messages
-        self._channel = FakeChannel(messages)
+    def __init__(self, messages_by_queue):
+        self._messages_by_queue = messages_by_queue
+        self._channel = FakeChannel(messages_by_queue)
 
     async def channel(self):
         """Channel"""
@@ -141,16 +142,20 @@ async def test_rabbit_listener():
 
     async def fake_connect(*args, **kwargs):
         """Async function to patch connect_robust"""
-        return FakeConnection([fake_msg])
+        # Only order queue gets the message
+        return FakeConnection({
+            "order_events_queue": [fake_msg],
+            "account_events_queue": [],
+        })
 
     #Replace objects here
-    with patch("notification_service.order_success_worker.aio_pika.connect_robust", new=fake_connect), \
-         patch("notification_service.order_success_worker.send_notification", new_callable=AsyncMock) as mock_send:
+    with patch("notification_service.notification.aio_pika.connect_robust", new=fake_connect), \
+         patch("notification_service.notification.send_notification", new_callable=AsyncMock) as mock_send:
 
         # Run listener as a task
         task = asyncio.create_task(rabbit_mq_listener())
         # Allow listener to pick up message
-        await asyncio.sleep(0.1)  
+        await asyncio.sleep(0.1)
         task.cancel()
         #Cancel the task, let the error be caught after the await
         try:

@@ -1,7 +1,7 @@
 # tests/conftest.py
 import pytest
 from fastapi.testclient import TestClient
-from notification_service.order_success_worker import app
+from notification_service.notification import app
 
 @pytest.fixture
 def client():
