@@ -66,10 +66,12 @@ async def rabbit_mq_listener():
     # Queue for  events
     order_queue = await ch.declare_queue("order_events_queue")
     account_queue = await ch.declare_queue("account_events_queue")
+    bank_queue = await ch.declare_queue("bank_events_queue")
 
     # Bind to all routing keys
     await order_queue.bind(ex, routing_key="order.*")
     await account_queue.bind(ex, routing_key="account.*")
+    await bank_queue.bind(ex, routing_key="bank.*")
 
     print("Listening for order events (routing keys: 'order.*', 'account.*')...")
 
@@ -82,5 +84,6 @@ async def rabbit_mq_listener():
                     await send_notification(data)
     await asyncio.gather(
         read_queue(order_queue, "Order"),
-        read_queue(account_queue, "Account")
+        read_queue(account_queue, "Account"),
+        read_queue(bank_queue, "Bank")
     )
