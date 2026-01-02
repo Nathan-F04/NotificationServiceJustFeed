@@ -1,5 +1,5 @@
 """
-Docstring for notification_service.order_success_worker
+Docstring for notification service 
 """
 from contextlib import asynccontextmanager
 import asyncio
