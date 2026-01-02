@@ -44,10 +44,8 @@ async def send_notification(message: str):
     for ws in clients:
         try:
             await ws.send_json(payload)
-        except WebSocketDisconnect:
-            disconnected_clients.add(ws)
-        except Exception as e:
-            print(f"Failed to send notification to a client: {e}")
+        except (WebSocketDisconnect, RuntimeError) as e:
+            print(f"Failed to send to client: {e}")
             disconnected_clients.add(ws)
 
     # Remove all disconnected clients safely
