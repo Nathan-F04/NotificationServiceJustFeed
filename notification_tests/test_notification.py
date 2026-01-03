@@ -97,7 +97,6 @@ class FakeMessage:
         """Fake proccess"""
         return FakeProcessCM()
 
-
 class FakeQueue:
     """Fake queue"""
     def __init__(self, messages):
